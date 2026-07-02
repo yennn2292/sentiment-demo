@@ -1,0 +1,213 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>评注 · 教学视频评论情感分析系统</title>
+<link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
+</head>
+<body>
+
+<header class="topbar">
+  <div class="topbar-inner">
+    <div class="brand">
+      <span class="brand-mark">評</span>
+      <span class="brand-text">评注 <span class="brand-sub">Comment Annotator</span></span>
+    </div>
+    <nav class="topnav">
+      <a href="#demo">实时批注</a>
+      <a href="#stats">数据概览</a>
+      <a href="#models">算法对比</a>
+      <a href="#lexicon">关键词</a>
+      <a href="#arch">系统架构</a>
+    </nav>
+  </div>
+</header>
+
+<main>
+  <!-- ============ HERO / LIVE DEMO ============ -->
+  <section class="hero" id="demo">
+    <div class="hero-inner">
+      <p class="eyebrow">实验五 · 任务三 — 文本情感分析与分类建模</p>
+      <h1>把一句评论，<br>交给四位"阅卷人"。</h1>
+      <p class="hero-desc">
+        输入一条教学视频评论，SnowNLP 情感词典与 K近邻、决策树、朴素贝叶斯
+        三个分类模型会各自给出判定，像四位阅卷人各自批注 —— 你能看到他们
+        意见一致，也能看到他们分歧的地方。
+      </p>
+
+      <div class="annotate-box">
+        <textarea id="commentInput" maxlength="300"
+          placeholder="试试输入一条评论，例如：老师讲得很清楚，但作业布置得太多了……"></textarea>
+        <div class="annotate-controls">
+          <span class="char-count"><span id="charCount">0</span>/300</span>
+          <div class="controls-right">
+            <button class="btn-ghost" id="sampleBtn" type="button">换一条示例</button>
+            <button class="btn-primary" id="analyzeBtn" type="button">批注这条评论</button>
+          </div>
+        </div>
+      </div>
+
+      <div class="verdict-panel">
+        <div class="stamp-area" id="stampArea" aria-live="polite">
+          <p class="stamp-hint">四位阅卷人的判断会显示在这里。</p>
+        </div>
+
+        <div class="balance-wrap">
+          <p class="balance-title">情感天平</p>
+          <svg id="balanceScale" class="balance-svg" viewBox="0 0 420 220" role="img" aria-label="情感天平，根据四位阅卷人的判断倾斜">
+            <!-- 底座 -->
+            <polygon points="180,214 240,214 210,190" fill="#1B2340"/>
+            <rect x="176" y="212" width="68" height="6" rx="2" fill="#1B2340"/>
+            <!-- 立柱 -->
+            <line x1="210" y1="190" x2="210" y2="46" stroke="#1B2340" stroke-width="4" stroke-linecap="round"/>
+            <!-- 横梁与托盘（整体旋转） -->
+            <g id="beamGroup" class="beam-group">
+              <line x1="60" y1="46" x2="360" y2="46" stroke="#1B2340" stroke-width="4" stroke-linecap="round"/>
+              <!-- 左托盘（负面） -->
+              <line x1="60" y1="46" x2="42" y2="104" stroke="#9AA0A6" stroke-width="1.5"/>
+              <line x1="60" y1="46" x2="78" y2="104" stroke="#9AA0A6" stroke-width="1.5"/>
+              <path d="M 30 104 Q 60 138 90 104" fill="none" stroke="#1B2340" stroke-width="3" stroke-linecap="round"/>
+              <g id="leftPan"></g>
+              <!-- 右托盘（正面） -->
+              <line x1="360" y1="46" x2="342" y2="104" stroke="#9AA0A6" stroke-width="1.5"/>
+              <line x1="360" y1="46" x2="378" y2="104" stroke="#9AA0A6" stroke-width="1.5"/>
+              <path d="M 330 104 Q 360 138 390 104" fill="none" stroke="#1B2340" stroke-width="3" stroke-linecap="round"/>
+              <g id="rightPan"></g>
+            </g>
+            <!-- 支点 -->
+            <circle cx="210" cy="46" r="6" fill="#B98B29"/>
+            <!-- 端标签 -->
+            <text x="60" y="176" class="balance-side-label negative-label">负面</text>
+            <text x="360" y="176" class="balance-side-label positive-label">正面</text>
+          </svg>
+          <p class="balance-readout" id="balanceReadout">尚未批注 · 天平持平</p>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- ============ STATS OVERVIEW ============ -->
+  <section class="section" id="stats">
+    <div class="section-inner">
+      <p class="eyebrow">数据概览</p>
+      <h2>{{ stats.total }} 条自建评论，正负各半</h2>
+
+      <div class="stat-cards">
+        <div class="stat-card">
+          <span class="stat-num">{{ stats.total }}</span>
+          <span class="stat-label">评论总数</span>
+          <span class="stat-sub">正面 {{ stats.pos }} · 负面 {{ stats.neg }}</span>
+        </div>
+        <div class="stat-card">
+          <span class="stat-num">{{ stats.agree_rate }}<small>%</small></span>
+          <span class="stat-label">SnowNLP 与人工标注一致率</span>
+          <span class="stat-sub">阈值 0.5 判定</span>
+        </div>
+        <div class="stat-card accent">
+          <span class="stat-num">{{ stats.best_acc }}</span>
+          <span class="stat-label">最佳模型准确率</span>
+          <span class="stat-sub">{{ stats.best_model }}</span>
+        </div>
+        <div class="stat-card">
+          <span class="stat-num">{{ stats.train_size }}<span class="stat-slash">/</span>{{ stats.test_size }}</span>
+          <span class="stat-label">训练集 / 测试集</span>
+          <span class="stat-sub">8 : 2 分层划分</span>
+        </div>
+      </div>
+
+      <div class="chart-row">
+        <div class="chart-card">
+          <h3>情感倾向值分布 <span class="chart-note">SnowNLP，0~1</span></h3>
+          <svg viewBox="0 0 560 260" class="hist-svg" role="img" aria-label="情感倾向值分布直方图">
+            {% for c in dist_counts %}
+            {% set bw = 560 / dist_counts|length %}
+            {% set bh = (c / max_dist_count) * 200 %}
+            {% set bx = loop.index0 * bw + 6 %}
+            {% set by = 230 - bh %}
+            <rect x="{{ bx }}" y="{{ by }}" width="{{ bw - 12 }}" height="{{ bh }}"
+                  fill="{{ '#C1443C' if dist_bins[loop.index0] < 0.5 else '#1F7A5C' }}" opacity="0.88" rx="2"/>
+            {% if c > 0 %}
+            <text x="{{ bx + (bw-12)/2 }}" y="{{ by - 6 }}" class="bar-label">{{ c }}</text>
+            {% endif %}
+            <text x="{{ bx + (bw-12)/2 }}" y="248" class="axis-label">{{ '%.1f'|format(dist_bins[loop.index0]) }}</text>
+            {% endfor %}
+            <line x1="0" y1="230" x2="560" y2="230" stroke="#D8DCD3" stroke-width="1"/>
+          </svg>
+          <p class="chart-caption">均值：正面 {{ stats.pos_avg }} · 负面 {{ stats.neg_avg }}——差距存在，但并不悬殊</p>
+        </div>
+
+        <div class="chart-card">
+          <h3>三种分类算法准确率对比</h3>
+          <svg viewBox="0 0 560 260" class="acc-svg" role="img" aria-label="算法准确率对比图">
+            {% for d in accuracy_data %}
+            {% set bh = d.acc * 190 %}
+            {% set bw = 130 %}
+            {% set bx = loop.index0 * 180 + 30 %}
+            {% set by = 230 - bh %}
+            <rect x="{{ bx }}" y="{{ by }}" width="{{ bw }}" height="{{ bh }}" fill="#1B2340" opacity="{{ 0.55 + d.acc * 0.4 }}" rx="3"/>
+            <text x="{{ bx + bw/2 }}" y="{{ by - 8 }}" class="bar-label mono">{{ '%.3f'|format(d.acc) }}</text>
+            <text x="{{ bx + bw/2 }}" y="248" class="axis-label small">{{ d.name.split('(')[0] }}</text>
+            {% endfor %}
+            <line x1="0" y1="230" x2="560" y2="230" stroke="#D8DCD3" stroke-width="1"/>
+          </svg>
+          <p class="chart-caption">测试集共 {{ stats.test_size }} 条 · 小样本场景下决策树表现相对稳定</p>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- ============ MODEL DETAIL / BATCH ============ -->
+  <section class="section alt" id="models">
+    <div class="section-inner">
+      <p class="eyebrow">批量批注</p>
+      <h2>一次批注多条评论</h2>
+      <p class="section-desc">每行一条评论，最多 30 条，系统会像上面一样分别给出四位"阅卷人"的判定。</p>
+      <div class="batch-box">
+        <textarea id="batchInput" rows="5" placeholder="这门课讲得很清楚，收获很大&#10;老师讲课语速太快，完全跟不上&#10;内容一般，没什么特别的"></textarea>
+        <button class="btn-primary" id="batchBtn" type="button">批量批注</button>
+      </div>
+      <div class="batch-result" id="batchResult"></div>
+    </div>
+  </section>
+
+  <!-- ============ WORDCLOUD ============ -->
+  <section class="section" id="lexicon">
+    <div class="section-inner">
+      <p class="eyebrow">语义画像</p>
+      <h2>正负评论，各有各的口头禅</h2>
+      <div class="lexicon-grid">
+        <figure>
+          <img src="{{ url_for('static', filename='img/fig2_wordcloud_positive.png') }}" alt="正面评论关键词词云">
+          <figcaption><span class="dot positive"></span>正面评论高频词</figcaption>
+        </figure>
+        <figure>
+          <img src="{{ url_for('static', filename='img/fig3_wordcloud_negative.png') }}" alt="负面评论关键词词云">
+          <figcaption><span class="dot negative"></span>负面评论高频词</figcaption>
+        </figure>
+      </div>
+    </div>
+  </section>
+
+  <!-- ============ ARCHITECTURE ============ -->
+  <section class="section alt" id="arch">
+    <div class="section-inner">
+      <p class="eyebrow">系统架构</p>
+      <h2>从一条评论，到一次判定</h2>
+      <img class="arch-img" src="{{ url_for('static', filename='img/fig0_architecture.png') }}" alt="系统架构图">
+      <p class="limitation-note">
+        <strong>诚实的边界：</strong>案例测试显示，模型对"内容一般，没什么特别的"这类委婉负面表达仍会误判——
+        训练样本的表达多样性直接决定了系统的判断能力，这也是这份实验报告里专门分析的问题。
+      </p>
+    </div>
+  </section>
+</main>
+
+<footer class="footer">
+  <p>实验五 · 人工智能应用程序的设计与开发 —— 任务三：文本情感分析与分类建模</p>
+  <p class="footer-sub">SnowNLP · jieba · scikit-learn · Flask</p>
+</footer>
+
+<script src="{{ url_for('static', filename='script.js') }}"></script>
+</body>
+</html>
